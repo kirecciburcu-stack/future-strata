@@ -1,8 +1,8 @@
 // Vercel serverless function
 // Env vars required (set in Vercel dashboard -> Project -> Settings -> Environment Variables):
-//   ANTHROPIC_API_KEY  — your Anthropic Console API key
-//   RESEND_API_KEY     — your Resend API key
-//   RESEND_FROM        — the "from" address Resend is allowed to send as
+//   GEMINI_API_KEY      — your Google AI Studio API key (aistudio.google.com)
+//   RESEND_API_KEY      — your Resend API key
+//   RESEND_FROM         — the "from" address Resend is allowed to send as
 //                        (e.g. "Future Strata <onboarding@resend.dev>" for testing,
 //                         or an address on a domain you've verified in Resend for real use)
 
@@ -68,38 +68,37 @@ module.exports = async (req, res) => {
       ? `Katılımcı adı: ${name}\n\nYanıtlar:\n\n${answersText}`
       : `Participant name: ${name}\n\nAnswers:\n\n${answersText}`;
 
-    const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-5',
-        max_tokens: 1000,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userMessage }]
-      })
-    });
+    const geminiRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: systemPrompt }] },
+          contents: [{ role: 'user', parts: [{ text: userMessage }] }],
+          generationConfig: {
+            maxOutputTokens: 1000,
+            responseMimeType: 'application/json'
+          }
+        })
+      }
+    );
 
-    if (!claudeRes.ok) {
-      const errText = await claudeRes.text();
-      throw new Error(`Claude API error: ${claudeRes.status} ${errText}`);
+    if (!geminiRes.ok) {
+      const errText = await geminiRes.text();
+      throw new Error(`Gemini API error: ${geminiRes.status} ${errText}`);
     }
 
-    const claudeData = await claudeRes.json();
-    const rawText = claudeData.content.find(b => b.type === 'text')?.text || '{}';
+    const geminiData = await geminiRes.json();
+    const rawText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
 
     let analysis;
     try {
       analysis = JSON.parse(rawText);
     } catch {
-      // Fallback: if Claude didn't return clean JSON, use the raw text as the body
       analysis = { title: isTr ? 'Sığınak Analizi' : 'Shelter Analysis', body: rawText };
     }
 
-    // Send the email via Resend (best-effort; don't fail the whole request if email fails)
     let emailSent = false;
     try {
       if (process.env.RESEND_API_KEY && process.env.RESEND_FROM) {
