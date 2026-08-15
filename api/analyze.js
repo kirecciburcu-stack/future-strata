@@ -1,3 +1,4 @@
+
 // Vercel serverless function
 // Env vars required (set in Vercel dashboard -> Project -> Settings -> Environment Variables):
 //   GEMINI_API_KEY      — your Google AI Studio API key (aistudio.google.com)
@@ -69,7 +70,7 @@ module.exports = async (req, res) => {
       : `Participant name: ${name}\n\nAnswers:\n\n${answersText}`;
 
     const geminiRes = await fetch(
-  https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${process.env.GEMINI_API_KEY}
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${process.env.GEMINI_API_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -148,4 +149,4 @@ function escapeHtml(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/\n/g, '<br>');
-}
+        }
