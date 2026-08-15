@@ -1,4 +1,3 @@
-
 // Vercel serverless function
 // Env vars required (set in Vercel dashboard -> Project -> Settings -> Environment Variables):
 //   GEMINI_API_KEY      — your Google AI Studio API key (aistudio.google.com)
@@ -6,6 +5,7 @@
 //   RESEND_FROM         — the "from" address Resend is allowed to send as
 //                        (e.g. "Future Strata <onboarding@resend.dev>" for testing,
 //                         or an address on a domain you've verified in Resend for real use)
+//   ADMIN_EMAIL         — your email, gets a copy of every analysis
 
 const FRAMEWORK = `
 Referans çerçeve (bu yazarların kavramlarını organik biçimde, en uygun 1-2 tanesini öne çıkararak kullan; hepsini zorla sıkıştırma):
@@ -69,21 +69,37 @@ module.exports = async (req, res) => {
       ? `Katılımcı adı: ${name}\n\nYanıtlar:\n\n${answersText}`
       : `Participant name: ${name}\n\nAnswers:\n\n${answersText}`;
 
-    const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${process.env.GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: systemPrompt }] },
-          contents: [{ role: 'user', parts: [{ text: userMessage }] }],
-          generationConfig: {
-            maxOutputTokens: 1000,
-            responseMimeType: 'application/json'
-          }
-        })
+    const geminiPayload = {
+      systemInstruction: { parts: [{ text: systemPrompt }] },
+      contents: [{ role: 'user', parts: [{ text: userMessage }] }],
+      generationConfig: {
+        maxOutputTokens: 1000,
+        responseMimeType: 'application/json'
       }
-    );
+    };
+
+    async function callGemini(model) {
+      return fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(geminiPayload)
+        }
+      );
+    }
+
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+    let geminiRes = await callGemini('gemini-flash-latest');
+    if (!geminiRes.ok && (geminiRes.status === 503 || geminiRes.status === 429)) {
+      await sleep(1500);
+      geminiRes = await callGemini('gemini-flash-latest');
+    }
+    if (!geminiRes.ok && (geminiRes.status === 503 || geminiRes.status === 429)) {
+      await sleep(1000);
+      geminiRes = await callGemini('gemini-2.5-flash-lite');
+    }
 
     if (!geminiRes.ok) {
       const errText = await geminiRes.text();
@@ -110,6 +126,15 @@ module.exports = async (req, res) => {
             <p style="white-space: pre-wrap; line-height: 1.6; font-size: 15px;">${escapeHtml(analysis.body || '')}</p>
           </div>
         `;
+        const adminCopyHtml = `
+          <div style="font-family: Georgia, serif; max-width: 560px; margin: 0 auto; color: #1b1712;">
+            <p style="letter-spacing: 0.15em; text-transform: uppercase; font-size: 11px; color: #a9714b;">Future Strata — Yeni Yanıt (Admin Kopyası)</p>
+            <p style="font-size: 13px; color: #6b4226;">Katılımcı: ${escapeHtml(name)} (${escapeHtml(email)})</p>
+            <h2 style="font-weight: 500;">${escapeHtml(analysis.title || '')}</h2>
+            <p style="white-space: pre-wrap; line-height: 1.6; font-size: 15px;">${escapeHtml(analysis.body || '')}</p>
+          </div>
+        `;
+
         const resendRes = await fetch('https://api.resend.com/emails', {
           method: 'POST',
           headers: {
@@ -125,7 +150,32 @@ module.exports = async (req, res) => {
         });
         emailSent = resendRes.ok;
         if (!resendRes.ok) {
-          console.error('Resend error:', await resendRes.text());
+          console.error('Resend error (participant):', await resendRes.text());
+        }
+
+        if (process.env.ADMIN_EMAIL) {
+          try {
+            const adminRes = await fetch('https://api.resend.com/emails', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${process.env.RESEND_API_KEY}`
+              },
+              body: JSON.stringify({
+                from: process.env.RESEND_FROM,
+                to: process.env.ADMIN_EMAIL,
+                subject: isTr
+                  ? `[Admin Kopyası] ${name} — Sığınak Analizi`
+                  : `[Admin Copy] ${name} — Shelter Analysis`,
+                html: adminCopyHtml
+              })
+            });
+            if (!adminRes.ok) {
+              console.error('Resend error (admin copy):', await adminRes.text());
+            }
+          } catch (adminErr) {
+            console.error('Admin copy email failed:', adminErr);
+          }
         }
       }
     } catch (emailErr) {
@@ -149,4 +199,4 @@ function escapeHtml(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/\n/g, '<br>');
-        }
+}
