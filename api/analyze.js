@@ -21,10 +21,10 @@ const SYSTEM_PROMPT_TR = `Sen bir sanat sergisi için katılımcı yanıtların�
 ${FRAMEWORK}
 Katılımcının hem seçmeli hem açık uçlu yanıtlarını birlikte oku, somut detaylara (verdiği örneklere, kelime seçimlerine) atıfta bulunarak bir örüntü kur.
 
-Çıktıyı SADECE şu JSON formatında ver, başka hiçbir şey ekleme:
+Çıktıyı SADECE şu JSON formatında ver, başka hiçbir şey ekleme. Analiz kısmını kısa ve öz tut (toplam en fazla 150 kelime):
 {
   "title": "Sığınak Tipi: [kısa, yaratıcı bir isim]",
-  "body": "Analiz:\\n[2-3 paragraflık, katılımcının somut yanıtlarına atıfta bulunan, en uygun 1-2 yazarı organik şekilde ismiyle anan bir analiz]\\n\\nKısa Okuma\\nGüvenlik kaynağı: [...]\\nAidiyet kaynağı: [...]\\nBaşa çıkma biçimi: [...]\\nSığınak nesnesi: [...]\\nÇekirdek kavram: [...]"
+  "body": "Analiz:\\n[en fazla 2 kısa paragraf, katılımcının somut yanıtlarına atıfta bulunan, en uygun 1-2 yazarı organik şekilde ismiyle anan bir analiz]\\n\\nKısa Okuma\\nGüvenlik kaynağı: [...]\\nAidiyet kaynağı: [...]\\nBaşa çıkma biçimi: [...]\\nSığınak nesnesi: [...]\\nÇekirdek kavram: [...]"
 }`;
 
 const SYSTEM_PROMPT_EN = `You are a text specialist writing short, thoughtful "shelter analyses" of participant responses for an art exhibition.
@@ -38,10 +38,10 @@ Reference framework (use 1-2 of these organically, whichever fits best; don't fo
 
 Read the participant's multiple-choice and open-ended answers together, referencing concrete details (their examples, word choices) to build a pattern.
 
-Output ONLY this JSON format, nothing else:
+Output ONLY this JSON format, nothing else. Keep the analysis short (150 words max total):
 {
   "title": "Shelter Type: [short, evocative name]",
-  "body": "Analysis:\\n[2-3 paragraphs referencing the participant's concrete answers, naming 1-2 of the most fitting authors organically]\\n\\nQuick Read\\nSource of safety: [...]\\nSource of belonging: [...]\\nCoping style: [...]\\nShelter object: [...]\\nCore concept: [...]"
+  "body": "Analysis:\\n[max 2 short paragraphs referencing the participant's concrete answers, naming 1-2 of the most fitting authors organically]\\n\\nQuick Read\\nSource of safety: [...]\\nSource of belonging: [...]\\nCoping style: [...]\\nShelter object: [...]\\nCore concept: [...]"
 }`;
 
 module.exports = async (req, res) => {
@@ -73,8 +73,9 @@ module.exports = async (req, res) => {
       systemInstruction: { parts: [{ text: systemPrompt }] },
       contents: [{ role: 'user', parts: [{ text: userMessage }] }],
       generationConfig: {
-        maxOutputTokens: 1000,
-        responseMimeType: 'application/json'
+        maxOutputTokens: 4096,
+        responseMimeType: 'application/json',
+        thinkingConfig: { thinkingBudget: 0 }
       }
     };
 
